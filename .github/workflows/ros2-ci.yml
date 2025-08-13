@@ -23,6 +23,25 @@ jobs:
         with:
           required-ros-distributions: ${{ env.ROS_DISTRO }}
 
+      - name: Install ccache
+        run: sudo apt-get update && sudo apt-get install -y ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml') }}
+          restore-keys: ccache-${{ runner.os }}-
+
+      - name: Configure ccache env
+        run: |
+          echo "CC='ccache gcc'" >> $GITHUB_ENV
+          echo "CXX='ccache g++'" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=$PWD" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=500M" >> $GITHUB_ENV
+
       - name: Install dependencies (rosdep)
         run: |
           sudo rosdep init || true
@@ -30,8 +49,18 @@ jobs:
           rosdep install --from-paths . --ignore-src -r -y
 
       - name: Build
+        env:
+          RCUTILS_COLORIZED_OUTPUT: 1
         run: |
-          colcon build --merge-install --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          set -euxo pipefail
+          colcon build \
+            --merge-install \
+            --event-handlers console_direct+ \
+            --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          # Salin compile_commands.json utama (bantu IntelliSense & debug)
+          if [ -f build/intelligent/compile_commands.json ]; then
+            cp build/intelligent/compile_commands.json .
+          fi
 
       - name: Run tests
         run: |
@@ -44,6 +73,19 @@ jobs:
         with:
             name: colcon-logs
             path: log
+
+      - name: Upload build artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            build/intelligent/CMakeFiles/CMakeOutput.log
+            build/intelligent/CMakeFiles/CMakeError.log
+            build/intelligent/compile_commands.json
+            compile_commands.json
+            build/intelligent/colcon_command_prefix_build.sh
+            build/intelligent/colcon_build.rc
 
   lint:
     runs-on: ubuntu-22.04
