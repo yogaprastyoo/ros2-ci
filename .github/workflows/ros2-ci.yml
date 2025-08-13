@@ -1,0 +1,64 @@
+name: ros2-ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  ROS_DISTRO: humble
+  ROS_VERSION: 2
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ROS 2
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: ${{ env.ROS_DISTRO }}
+
+      - name: Install dependencies (rosdep)
+        run: |
+          sudo rosdep init || true
+          rosdep update
+          rosdep install --from-paths . --ignore-src -r -y
+
+      - name: Build
+        run: |
+          colcon build --merge-install --event-handlers console_direct+ --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Run tests
+        run: |
+          colcon test --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Upload logs (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+            name: colcon-logs
+            path: log
+
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup ROS 2
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: ${{ env.ROS_DISTRO }}
+      - name: Install deps
+        run: |
+          rosdep update
+          rosdep install --from-paths . --ignore-src -r -y
+      - name: Run ament linters
+        run: |
+          colcon test --ctest-args -R ament_lint
+          colcon test-result --verbose || true
