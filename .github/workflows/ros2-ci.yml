@@ -102,6 +102,20 @@ jobs:
         run: |
           rosdep update
           rosdep install --from-paths . --ignore-src -r -y
+      - name: (Lint) Install ccache
+        run: sudo apt-get update && sudo apt-get install -y ccache
+      - name: (Lint) Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-lint-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml') }}
+          restore-keys: ccache-lint-${{ runner.os }}-
+      - name: Build (needed before ament_lint tests)
+        run: |
+          colcon build --merge-install --event-handlers console_direct+ --cmake-args \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Run ament linters
         run: |
           colcon test --ctest-args -R ament_lint
